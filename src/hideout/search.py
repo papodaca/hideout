@@ -5,11 +5,10 @@ import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass
 
-import numpy as np
-
 from hideout.chunk import Chunk
-from hideout.index import connect, load_embeddings, row_to_chunk
+from hideout.index import connect, row_to_chunk
 from hideout.ollama import embed
+from hideout.vectors import vector_query
 
 RRF_K = 60
 FTS_WEIGHT = 1.2
@@ -100,26 +99,16 @@ def vector_search(
     query: str,
     limit: int = 20,
     rowids: set[int] | None = None,
+    books: Collection[str] | None = None,
 ) -> list[tuple[int, float]]:
     if rowids is not None and not rowids:
         return []
-    q = np.asarray(embed([query], query=True)[0], dtype=np.float32)
-    q = q / max(float(np.linalg.norm(q)), 1e-12)
-    mat = load_embeddings()
-    scores = mat @ q
-    if rowids is not None:
-        mask = np.zeros(scores.shape[0], dtype=bool)
-        idx = np.fromiter((rid - 1 for rid in rowids), dtype=np.intp, count=len(rowids))
-        idx = idx[(idx >= 0) & (idx < scores.shape[0])]
-        mask[idx] = True
-        scores = np.where(mask, scores, -np.inf)
-    top = np.argsort(-scores)[:limit]
-    out: list[tuple[int, float]] = []
-    for i in top:
-        if not np.isfinite(scores[i]):
-            continue
-        out.append((int(i) + 1, float(scores[i])))
-    return out
+    vector = [float(x) for x in embed([query], query=True)[0]]
+    hits = vector_query(vector, limit=limit, books=books)
+    if rowids is None:
+        return hits
+    allowed = rowids
+    return [(rowid, score) for rowid, score in hits if rowid in allowed]
 
 
 def rrf(
@@ -134,7 +123,7 @@ def rrf(
         if not allowed:
             return []
     fts = fts_search(query, limit=pool, rowids=allowed)
-    vec = vector_search(query, limit=pool, rowids=allowed)
+    vec = vector_search(query, limit=pool, rowids=allowed, books=books)
     fts_rank = {rowid: i for i, (rowid, _) in enumerate(fts)}
     vec_rank = {rowid: i for i, (rowid, _) in enumerate(vec)}
     scores: dict[int, float] = {}

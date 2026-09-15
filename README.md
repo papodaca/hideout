@@ -1,6 +1,6 @@
 # Hideout
 
-A terminal for asking questions against markdown libraries. Hybrid search (FTS + embeddings) via a local model.
+A terminal for asking questions against markdown libraries. Hybrid search (SQLite FTS + a local zvec index) via a local model.
 
 ## Install
 

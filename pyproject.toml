@@ -4,10 +4,10 @@ version = "0.1.0"
 description = "Local RAG TUI over markdown libraries"
 requires-python = ">=3.11"
 dependencies = [
-  "numpy",
   "prompt_toolkit",
   "pymupdf",
   "rich",
+  "zvec",
 ]
 
 [project.scripts]

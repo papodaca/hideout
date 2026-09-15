@@ -4,27 +4,26 @@ import json
 import sqlite3
 from pathlib import Path
 
-import numpy as np
-
 from hideout.chunk import Chunk, chunk_all, markdown_files, source_hash
 from hideout.ollama import embed
 from hideout.paths import index_dir
+from hideout.vectors import create_vectors, destroy_vectors, insert_vectors, vec_path
 
 BATCH = 16
 DB_NAME = "chunks.sqlite"
-EMB_NAME = "embeddings.npy"
 META_NAME = "meta.json"
+LEGACY_EMB_NAME = "embeddings.npy"
 
 
 def _paths() -> tuple[Path, Path, Path]:
     root = index_dir()
     root.mkdir(parents=True, exist_ok=True)
-    return root / DB_NAME, root / EMB_NAME, root / META_NAME
+    return root / DB_NAME, vec_path(), root / META_NAME
 
 
 def needs_rebuild() -> bool:
-    db, emb, meta = _paths()
-    if not (db.is_file() and emb.is_file() and meta.is_file()):
+    db, vec, meta = _paths()
+    if not (db.is_file() and vec.exists() and meta.is_file()):
         return True
     current = source_hash(markdown_files())
     saved = json.loads(meta.read_text()).get("source_hash")
@@ -52,14 +51,18 @@ def build_index(*, force: bool = False) -> int:
         vectors.extend(embed([c.embed_text() for c in batch], query=False))
         print(f"embedded {min(i + BATCH, len(chunks))}/{len(chunks)}")
 
-    arr = np.asarray(vectors, dtype=np.float32)
-    norms = np.linalg.norm(arr, axis=1, keepdims=True)
-    norms = np.clip(norms, 1e-12, None)
-    arr = arr / norms
+    dim = len(vectors[0]) if vectors else 0
+    if dim == 0:
+        raise SystemExit("embed returned empty vectors")
 
-    db, emb, meta = _paths()
+    db, _, meta = _paths()
     if db.exists():
         db.unlink()
+    legacy = index_dir() / LEGACY_EMB_NAME
+    if legacy.exists():
+        legacy.unlink()
+    destroy_vectors()
+
     conn = sqlite3.connect(db)
     try:
         _init_schema(conn)
@@ -89,16 +92,22 @@ def build_index(*, force: bool = False) -> int:
             """
         )
         conn.commit()
+        rows = conn.execute("SELECT rowid, book FROM chunks ORDER BY rowid").fetchall()
     finally:
         conn.close()
 
-    np.save(emb, arr)
+    create_vectors(dim)
+    insert_vectors(
+        (int(rowid), str(book), [float(x) for x in vec])
+        for (rowid, book), vec in zip(rows, vectors, strict=True)
+    )
     meta.write_text(
         json.dumps(
             {
                 "source_hash": source_hash(files),
                 "chunks": len(chunks),
-                "dim": int(arr.shape[1]),
+                "dim": dim,
+                "vectors": "zvec",
             },
             indent=2,
         )
@@ -151,13 +160,6 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(db)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def load_embeddings() -> np.ndarray:
-    _, emb, _ = _paths()
-    if not emb.is_file():
-        raise SystemExit("no index yet; run: python -m hideout index")
-    return np.load(emb)
 
 
 def row_to_chunk(row: sqlite3.Row) -> Chunk:
