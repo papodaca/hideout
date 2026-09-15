@@ -2,6 +2,28 @@
 
 A terminal for asking questions against markdown libraries. Hybrid search (FTS + embeddings) via a local Ollama model.
 
+## Install
+
+Python 3.11 or newer has to be on PATH. Something that speaks Ollama's `/api/chat` and `/api/embed` (Ollama itself, a proxy, whatever) has to be reachable for ask and search.
+
+```
+curl https://github.com/papodaca/hideout/raw/refs/heads/main/install.sh | bash
+```
+
+From a clone, run `./install.sh` instead. It installs the tree you have checked out.
+
+Either path creates `~/.venv/hideout` and links `hideout` into `~/.local/bin`. If that directory is not on PATH, the script adds it to your shell rc. Re-run to refresh.
+
+```
+hideout
+hideout index
+hideout search "your query"
+```
+
+Type a question at the prompt. `/search` prints raw hits. `/config` edits the chat model, API urls, headers, and source directories. `/help` lists commands.
+
+The venv lives at `~/.venv/hideout` if you want to activate it yourself. `HIDEOUT_PYTHON`, `HIDEOUT_VENV`, and `HIDEOUT_BIN_DIR` override the interpreter, venv path, and link location.
+
 ## Paths
 
 Config: `$XDG_CONFIG_HOME/hideout/config.toml` (default `~/.config/hideout/config.toml`)
@@ -26,16 +48,3 @@ sources = [
 # [embed_headers]
 # "Authorization" = "Bearer ..."
 ```
-
-## Run
-
-From this repo, venv on:
-
-```
-pip install -e .
-python -m hideout
-python -m hideout index
-python -m hideout search "your query"
-```
-
-Type a question at the prompt. `/search` prints raw hits. `/config` edits the chat model, API urls, headers, and source directories. `/help` lists commands.
