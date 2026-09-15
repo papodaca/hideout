@@ -7,7 +7,7 @@ A terminal for asking questions against markdown libraries. Hybrid search (FTS +
 Python 3.11 or newer has to be on PATH. Ask and search need an OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` server. Ollama exposes those at `http://127.0.0.1:11434/v1`.
 
 ```
-curl https://github.com/papodaca/hideout/raw/refs/heads/main/install.sh | bash
+curl -L https://github.com/papodaca/hideout/raw/refs/heads/main/install.sh | bash
 ```
 
 From a clone, run `./install.sh` instead. It installs the tree you have checked out.
@@ -16,9 +16,12 @@ Either path creates `~/.venv/hideout` and links `hideout` into `~/.local/bin`. I
 
 ```
 hideout
+hideout extract book.pdf markdown/book
 hideout index
 hideout search "your query"
 ```
+
+`extract` splits a PDF by its bookmark outline. If the file has no bookmarks, it writes one markdown file per page.
 
 Type a question at the prompt. `/search` prints raw hits. `/config` edits the chat model, API urls, headers, and source directories. `/help` lists commands.
 

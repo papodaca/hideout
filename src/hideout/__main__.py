@@ -93,10 +93,23 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("config", help="print config and data paths")
 
+    p_extract = sub.add_parser("extract", help="convert a PDF to markdown")
+    p_extract.add_argument("pdf", type=Path, help="path to a PDF")
+    p_extract.add_argument("target", type=Path, help="directory to write markdown into")
+
     args = parser.parse_args(argv)
 
     if args.cmd == "config":
         return _print_paths()
+
+    if args.cmd == "extract":
+        from hideout.extract import ExtractError, extract_pdf
+
+        try:
+            return extract_pdf(args.pdf, args.target)
+        except ExtractError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
     if not _need_sources() and args.cmd != "index":
         return 2
