@@ -40,6 +40,7 @@ chat_model = "ornith-1.5:9b"
 embed_model = "nomic-embed-text"
 chat_url = "http://127.0.0.1:11434/v1"
 embed_url = "http://127.0.0.1:11434/v1"
+banner = true
 
 sources = [
   "/path/to/your/markdown",

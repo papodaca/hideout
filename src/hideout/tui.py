@@ -22,6 +22,14 @@ from hideout.search import Hit, rrf
 from hideout.sets import DocSet, list_sets, load_enabled, parse_set_args, pick_sets, save_enabled
 
 ACCENT = "#ff6b4a"
+BANNER = """\
+██╗  ██╗██╗██████╗ ███████╗ ██████╗ ██╗   ██╗████████╗
+██║  ██║██║██╔══██╗██╔════╝██╔═══██╗██║   ██║╚══██╔══╝
+███████║██║██║  ██║█████╗  ██║   ██║██║   ██║   ██║   
+██╔══██║██║██║  ██║██╔══╝  ██║   ██║██║   ██║   ██║   
+██║  ██║██║██████╔╝███████╗╚██████╔╝╚██████╔╝   ██║   
+╚═╝  ╚═╝╚═╝╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝    ╚═╝   \
+"""
 HELP = """\
   /ask <q>     retrieve, then answer (this is the default; a bare line is an ask)
   /clear       clear the screen
@@ -183,10 +191,28 @@ def _banner(console: Console, k: int, available: list[DocSet], enabled: set[str]
     n = sum(s.n for s in available if s.slug in enabled)
     n_on = len(enabled)
     n_all = len(available)
-    console.print(
-        f"[bold]Hideout[/]  [dim]·  {n} chunks  ·  "
-        f"{n_on}/{n_all} sets  ·  k={k}[/]"
+    details = (
+        f"[dim]·  {n} chunks  ·  {n_on}/{n_all} sets  ·  k={k}[/]"
     )
+    if not get_config().banner:
+        console.print(f"[bold]Hideout[/]  {details}")
+        console.print("[dim]type a question, or /help[/]")
+        console.print()
+        return
+    lines = BANNER.splitlines()
+    art_width = max(cell_len(line) for line in lines)
+    console.print()
+    if console.width >= art_width + 2:
+        for line in lines:
+            mark = Text()
+            mark.append(line, style=f"bold {ACCENT}")
+            console.print(mark)
+        console.print(Text("─" * art_width, style="dim"))
+    else:
+        mark = Text()
+        mark.append("HIDEOUT", style=f"bold {ACCENT}")
+        console.print(mark)
+    console.print(details)
     console.print("[dim]type a question, or /help[/]")
     console.print()
 
@@ -344,6 +370,7 @@ def _print_config(console: Console) -> None:
         console.print(line)
 
     row("model", cfg.chat_model)
+    row("banner", "on" if cfg.banner else "off")
     row("llm", cfg.chat_url)
     if cfg.chat_headers:
         row("llm headers", ", ".join(f"{name} (set)" for name in cfg.chat_headers))

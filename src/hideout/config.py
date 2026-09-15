@@ -33,6 +33,7 @@ class Config:
     max_chars: int = MAX_CHARS
     min_chars: int = MIN_CHARS
     overlap_chars: int = OVERLAP_CHARS
+    banner: bool = True
 
 
 def _toml_string(value: str) -> str:
@@ -59,6 +60,7 @@ def dump_toml(cfg: Config) -> str:
         f"embed_model = {_toml_quoted(cfg.embed_model)}",
         f"chat_url = {_toml_quoted(cfg.chat_url)}",
         f"embed_url = {_toml_quoted(cfg.embed_url)}",
+        f"banner = {'true' if cfg.banner else 'false'}",
         "",
         "system_prompt = " + _toml_string(cfg.system_prompt),
         "",
@@ -149,6 +151,23 @@ def format_header_text(headers: dict[str, str]) -> str:
     return "\n".join(f"{key}: {headers[key]}" for key in headers)
 
 
+def _as_bool(raw: object, default: bool = True) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if raw is None:
+        return default
+    text = str(raw).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def parse_bool_text(text: str, default: bool = True) -> bool:
+    return _as_bool(text.strip() or None, default)
+
+
 def _as_header_map(raw: object) -> dict[str, str]:
     if not isinstance(raw, dict):
         return {}
@@ -180,6 +199,7 @@ def load_config(path: Path | None = None) -> Config:
         max_chars=int(data.get("max_chars") or MAX_CHARS),
         min_chars=int(data.get("min_chars") or MIN_CHARS),
         overlap_chars=int(data.get("overlap_chars") or OVERLAP_CHARS),
+        banner=_as_bool(data.get("banner"), True),
     )
 
 

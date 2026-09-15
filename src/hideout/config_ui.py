@@ -8,6 +8,7 @@ from hideout.config import (
     Config,
     format_header_text,
     get_config,
+    parse_bool_text,
     parse_header_text,
     parse_source_text,
 )
@@ -68,6 +69,7 @@ def _config_app(cfg: Config, **kwargs):
         else None
     )
     model = _line(cfg.chat_model, completer)
+    banner = _line("true" if cfg.banner else "false")
     llm_url = _line(cfg.chat_url)
     embed_url = _line(cfg.embed_url)
     llm_headers = _box(format_header_text(cfg.chat_headers), min_height=3, preferred=4)
@@ -77,7 +79,7 @@ def _config_app(cfg: Config, **kwargs):
         min_height=4,
         preferred=6,
     )
-    single = {model.window, llm_url.window, embed_url.window}
+    single = {model.window, banner.window, llm_url.window, embed_url.window}
 
     def collect() -> Config | None:
         name = model.text.strip()
@@ -88,6 +90,7 @@ def _config_app(cfg: Config, **kwargs):
         return replace(
             cfg,
             chat_model=name,
+            banner=parse_bool_text(banner.text, cfg.banner),
             chat_url=chat_url,
             embed_url=embed,
             chat_headers=parse_header_text(llm_headers.text),
@@ -129,6 +132,8 @@ def _config_app(cfg: Config, **kwargs):
             Label(hint),
             Label("chat model"),
             model,
+            Label("banner  (true = wordmark, false = one line)"),
+            banner,
             Label("llm url"),
             llm_url,
             Label("llm headers  (Name: value, one per line)"),
