@@ -80,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         help="limit to a book folder; repeat to include several",
     )
 
-    p_ask = sub.add_parser("ask", help="retrieve, then answer with the local Ollama model")
+    p_ask = sub.add_parser("ask", help="retrieve, then answer with the local model")
     p_ask.add_argument("query", nargs="*")
     p_ask.add_argument("-k", type=int, default=8)
     p_ask.add_argument(

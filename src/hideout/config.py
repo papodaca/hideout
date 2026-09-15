@@ -9,7 +9,7 @@ from hideout.paths import config_dir, config_path
 
 DEFAULT_CHAT_MODEL = "ornith-1.5:9b"
 DEFAULT_EMBED_MODEL = "nomic-embed-text"
-DEFAULT_BASE_URL = "http://127.0.0.1:11434"
+DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 DEFAULT_SYSTEM = """\
 You answer only from the excerpts. If they do not contain the answer, say so.
 After each claim, cite book, file, section, and page from the excerpt labels.

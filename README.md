@@ -1,10 +1,10 @@
 # Hideout
 
-A terminal for asking questions against markdown libraries. Hybrid search (FTS + embeddings) via a local Ollama model.
+A terminal for asking questions against markdown libraries. Hybrid search (FTS + embeddings) via a local model.
 
 ## Install
 
-Python 3.11 or newer has to be on PATH. Something that speaks Ollama's `/api/chat` and `/api/embed` (Ollama itself, a proxy, whatever) has to be reachable for ask and search.
+Python 3.11 or newer has to be on PATH. Ask and search need an OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` server. Ollama exposes those at `http://127.0.0.1:11434/v1`.
 
 ```
 curl https://github.com/papodaca/hideout/raw/refs/heads/main/install.sh | bash
@@ -35,8 +35,8 @@ First run writes a config if none exists. If `./markdown` or `./docs` is present
 ```toml
 chat_model = "ornith-1.5:9b"
 embed_model = "nomic-embed-text"
-chat_url = "http://127.0.0.1:11434"
-embed_url = "http://127.0.0.1:11434"
+chat_url = "http://127.0.0.1:11434/v1"
+embed_url = "http://127.0.0.1:11434/v1"
 
 sources = [
   "/path/to/your/markdown",

@@ -16,7 +16,7 @@ from rich.text import Text
 
 from hideout.config import get_config, reload_config, write_config
 from hideout.index import build_index, needs_rebuild
-from hideout.ollama import OllamaError
+from hideout.ollama import OllamaError, api_base
 from hideout.paths import data_dir, history_path
 from hideout.search import Hit, rrf
 from hideout.sets import DocSet, list_sets, load_enabled, parse_set_args, pick_sets, save_enabled
@@ -384,7 +384,7 @@ def _do_config(
     reload_config()
     _print_config(console)
     embed_changed = (
-        edited.embed_url.rstrip("/") != old.embed_url.rstrip("/")
+        api_base(edited.embed_url) != api_base(old.embed_url)
         or edited.embed_headers != old.embed_headers
         or edited.embed_model != old.embed_model
     )
