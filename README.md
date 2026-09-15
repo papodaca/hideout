@@ -13,11 +13,18 @@ First run writes a config if none exists. If `./markdown` or `./docs` is present
 ```toml
 chat_model = "ornith-1.5:9b"
 embed_model = "nomic-embed-text"
-ollama_host = "http://127.0.0.1:11434"
+chat_url = "http://127.0.0.1:11434"
+embed_url = "http://127.0.0.1:11434"
 
 sources = [
   "/path/to/your/markdown",
 ]
+
+# [chat_headers]
+# "Authorization" = "Bearer ..."
+#
+# [embed_headers]
+# "Authorization" = "Bearer ..."
 ```
 
 ## Run
@@ -31,4 +38,4 @@ python -m hideout index
 python -m hideout search "your query"
 ```
 
-Type a question at the prompt. `/search` prints raw hits. `/help` lists commands.
+Type a question at the prompt. `/search` prints raw hits. `/config` edits the chat model, API urls, headers, and source directories. `/help` lists commands.

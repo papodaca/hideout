@@ -26,6 +26,12 @@ def _print_paths() -> int:
     print(f"config  {config_path()}")
     print(f"data    {data_dir()}")
     print(f"index   {index_dir()}")
+    print(f"llm     {cfg.chat_url}")
+    print(f"embed   {cfg.embed_url}")
+    if cfg.chat_headers:
+        print("llm headers  " + ", ".join(f"{name} (set)" for name in cfg.chat_headers))
+    if cfg.embed_headers:
+        print("embed headers  " + ", ".join(f"{name} (set)" for name in cfg.embed_headers))
     if not cfg.sources:
         print("sources  (none)")
         return 0

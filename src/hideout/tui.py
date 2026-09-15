@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.text import Text
 
+from hideout.config import get_config, reload_config, write_config
 from hideout.index import build_index, needs_rebuild
 from hideout.ollama import OllamaError
 from hideout.paths import data_dir, history_path
@@ -24,6 +25,7 @@ ACCENT = "#ff6b4a"
 HELP = """\
   /ask <q>     retrieve, then answer (this is the default; a bare line is an ask)
   /clear       clear the screen
+  /config      edit model, API urls, headers, and sources
   /help        this list
   /k <n>       number of hits (current session)
   /quit        leave
@@ -37,6 +39,7 @@ HELP = """\
 SLASH = (
     ("/ask", "answer with the local model (default)"),
     ("/clear", "clear the screen"),
+    ("/config", "edit model, urls, headers, sources"),
     ("/help", "show commands"),
     ("/k", "set number of hits, e.g. /k 8"),
     ("/quit", "leave"),
@@ -191,7 +194,7 @@ def _banner(console: Console, k: int, available: list[DocSet], enabled: set[str]
 def _toolbar(k: int, n_on: int, n_all: int) -> Callable[[], HTML]:
     def _get() -> HTML:
         return HTML(
-            f" k={k}   {n_on}/{n_all} sets   /search   /sets   /help   ctrl+d to leave "
+            f" k={k}   {n_on}/{n_all} sets   /config   /sets   /help   ctrl+d to leave "
         )
 
     return _get
@@ -331,6 +334,75 @@ def _do_sets(
     return picked
 
 
+def _print_config(console: Console) -> None:
+    cfg = get_config()
+    console.print()
+    def row(label: str, value: str, *, dim_value: bool = False) -> None:
+        line = Text()
+        line.append(f"  {label}  ", style="dim")
+        line.append(value, style="dim" if dim_value else "")
+        console.print(line)
+
+    row("model", cfg.chat_model)
+    row("llm", cfg.chat_url)
+    if cfg.chat_headers:
+        row("llm headers", ", ".join(f"{name} (set)" for name in cfg.chat_headers))
+    row("embed", cfg.embed_url)
+    if cfg.embed_headers:
+        row("embed headers", ", ".join(f"{name} (set)" for name in cfg.embed_headers))
+    if not cfg.sources:
+        console.print("  [dim]sources  (none)[/]")
+    else:
+        for path in cfg.sources:
+            mark = "ok" if path.is_dir() else "missing"
+            line = Text()
+            line.append(f"  [{mark}]  ", style="dim")
+            line.append(str(path))
+            console.print(line)
+    console.print()
+
+
+def _do_config(
+    console: Console,
+    available: list[DocSet],
+    enabled: set[str],
+) -> tuple[list[DocSet], set[str]]:
+    from hideout.config_ui import edit_config
+    from hideout.paths import config_path
+
+    old = get_config()
+    edited = edit_config(old)
+    if edited is None:
+        if not (sys.stdin.isatty() and sys.stdout.isatty()):
+            _print_config(console)
+            console.print(f"[dim]run in a terminal to edit, or change {config_path()}[/]")
+            console.print()
+        return available, enabled
+    old_sources = {path.resolve() for path in old.sources}
+    new_sources = {path.resolve() for path in edited.sources}
+    write_config(edited)
+    reload_config()
+    _print_config(console)
+    embed_changed = (
+        edited.embed_url.rstrip("/") != old.embed_url.rstrip("/")
+        or edited.embed_headers != old.embed_headers
+        or edited.embed_model != old.embed_model
+    )
+    if old_sources != new_sources or embed_changed:
+        try:
+            console.print("[dim]rebuilding index…[/]")
+            build_index(force=True)
+        except SystemExit as exc:
+            msg = exc.args[0] if exc.args else "index failed"
+            console.print(f"[red]{escape(str(msg))}[/]")
+            console.print()
+            return available, enabled
+        available = list_sets()
+        enabled = load_enabled(available)
+        _print_sets(console, available, enabled)
+    return available, enabled
+
+
 def _do_search(
     console: Console,
     query: str,
@@ -424,6 +496,9 @@ def run(k: int = 6) -> int:
         if low == "/clear":
             console.clear()
             _banner(console, k, available, enabled)
+            continue
+        if low == "/config":
+            available, enabled = _do_config(console, available, enabled)
             continue
         if low in {"/sets", "/books"} or low.startswith("/sets ") or low.startswith("/books "):
             rest = line.split(None, 1)[1] if " " in line else ""
