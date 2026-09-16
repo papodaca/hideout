@@ -1,9 +1,9 @@
-# Trusted publishing via OIDC. The npm publisher is stage-only, so CI
-# uploads a draft and you approve it (2FA) on npmjs.com or:
-#   npm stage approve @papodaca/hideout@<version>
+# Publish live via GitHub OIDC. On npmjs.com the trusted publisher must
+# allow `npm publish` (stage-only is not enough). Delete and recreate
+# the publisher if the Edit form cannot add that permission.
 #
-# Do not set registry-url on setup-node. That writes an empty _authToken
-# and npm then skips OIDC (E401).
+# setup-node's registry-url writes an empty _authToken that makes npm
+# skip OIDC. Strip it before publish.
 #
 # Bump package.json, commit, tag vX.Y.Z, push the tag.
 
@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   publish:
-    name: Stage on npm
+    name: Publish to npm
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -34,10 +34,15 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
-      - name: Use npm with staged publishing
-        run: npm install -g npm@^11.15.0
+      - name: Drop empty npm token so OIDC can run
+        run: |
+          npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          if [ -f "$npmrc" ]; then
+            sed -i '/_authToken/d' "$npmrc"
+          fi
 
       - name: Install
         run: npm ci
@@ -45,7 +50,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Stage
-        run: |
-          unset NODE_AUTH_TOKEN
-          npm stage publish
+      - name: Publish
+        run: npm publish
