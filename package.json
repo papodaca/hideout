@@ -1,0 +1,39 @@
+{
+  "name": "@papodaca/hideout",
+  "version": "1.0.0",
+  "description": "Ask a local model about markdown libraries",
+  "type": "module",
+  "bin": {
+    "hideout": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/papodaca/hideout.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-pg_textsearch": "0.0.10",
+    "@electric-sql/pglite-pgvector": "0.0.9",
+    "mupdf": "^1.26.0",
+    "ora": "^8.2.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.0"
+  }
+}
