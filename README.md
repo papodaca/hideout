@@ -1,4 +1,5 @@
-# Hideout
+
+![screenshot](.github/screenshot.png)
 
 A terminal for asking questions against markdown libraries. Hybrid search (BM25 + pgvector) in one local PGlite database, via a local model.
 
