@@ -1,14 +1,11 @@
-# Publish to npm via Trusted Publishing (OIDC). No NPM_TOKEN secret.
+# Trusted publishing via OIDC. The npm publisher is stage-only, so CI
+# uploads a draft and you approve it (2FA) on npmjs.com or:
+#   npm stage approve @papodaca/hideout@<version>
 #
-# One-time setup after the package exists on npm:
-#   npm trust github hideout \
-#     --file publish.yml \
-#     --repository papodaca/hideout \
-#     --allow-publish -y
-# Or npmjs.com → @papodaca/hideout → Settings → Trusted Publisher
-# → GitHub Actions (papodaca/hideout, publish.yml, allow npm publish).
+# To publish live from CI instead, edit the trusted publisher and also
+# allow npm publish, then change the last step to `npm publish`.
 #
-# Then: bump package.json, commit, tag vX.Y.Z, push the tag.
+# Bump package.json, commit, tag vX.Y.Z, push the tag.
 
 name: Publish
 
@@ -23,7 +20,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish to npm
+    name: Stage on npm
     runs-on: ubuntu-latest
 
     steps:
@@ -37,11 +34,14 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
+      - name: Use npm with staged publishing
+        run: npm install -g npm@^11.15.0
+
       - name: Install
         run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Publish
-        run: npm publish
+      - name: Stage
+        run: npm stage publish
