@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from hideout.config import get_config
 
@@ -17,6 +17,23 @@ def api_base(url: str) -> str:
     if url.endswith("/v1"):
         return url
     return url + "/v1"
+
+
+def native_api_base(url: str) -> str:
+    url = url.rstrip("/")
+    if url.endswith("/v1"):
+        return url[: -len("/v1")].rstrip("/")
+    return url
+
+
+def _canonical_model(name: str) -> str:
+    name = name.strip()
+    return name if ":" in name else f"{name}:latest"
+
+
+def model_installed(name: str, names: list[str]) -> bool:
+    want = _canonical_model(name)
+    return any(_canonical_model(have) == want for have in names)
 
 
 def _endpoint(base: str, path: str) -> str:
@@ -88,6 +105,119 @@ def list_models() -> list[str]:
         if name:
             names.append(str(name))
     return sorted(set(names))
+
+
+def list_native_models(base: str, headers: dict[str, str] | None) -> list[str] | None:
+    url = native_api_base(base).rstrip("/") + "/api/tags"
+    try:
+        with _open(
+            url,
+            headers=_headers(headers),
+            method="GET",
+            timeout=5,
+        ) as resp:
+            data = json.loads(resp.read().decode())
+    except (OllamaError, TimeoutError, json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict) or "models" not in data:
+        return None
+    names: list[str] = []
+    for item in data.get("models") or []:
+        name = item.get("name") if isinstance(item, dict) else None
+        if name:
+            names.append(str(name))
+    return names
+
+
+def _needed_models() -> list[tuple[str, dict[str, str], str]]:
+    cfg = get_config()
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, dict[str, str], str]] = []
+    for url, headers, model in (
+        (cfg.chat_url, cfg.chat_headers, cfg.chat_model),
+        (cfg.embed_url, cfg.embed_headers, cfg.embed_model),
+    ):
+        name = model.strip()
+        if not name:
+            continue
+        key = (native_api_base(url), name)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((url, headers, name))
+    return out
+
+
+def models_to_pull() -> list[tuple[str, dict[str, str], str]]:
+    missing: list[tuple[str, dict[str, str], str]] = []
+    cache: dict[str, list[str] | None] = {}
+    for url, headers, name in _needed_models():
+        base = native_api_base(url)
+        if base not in cache:
+            cache[base] = list_native_models(url, headers)
+        installed = cache[base]
+        if installed is None:
+            continue
+        if not model_installed(name, installed):
+            missing.append((url, headers, name))
+    return missing
+
+
+def pull_model(
+    name: str,
+    *,
+    base: str,
+    headers: dict[str, str] | None = None,
+    on_status: Callable[[str], None] | None = None,
+) -> None:
+    url = native_api_base(base).rstrip("/") + "/api/pull"
+    payload = {"model": name, "name": name, "stream": True}
+    resp = _open(
+        url,
+        data=json.dumps(payload).encode(),
+        headers=_headers(headers),
+        method="POST",
+        timeout=3600,
+    )
+    with resp:
+        while True:
+            raw = resp.readline()
+            if not raw:
+                break
+            line = raw.decode().strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            err = event.get("error")
+            if err:
+                raise OllamaError(f"could not pull {name}: {err}")
+            status = str(event.get("status") or "").strip()
+            if not status:
+                continue
+            total = event.get("total")
+            done = event.get("completed")
+            if total:
+                pct = int(100 * int(done or 0) / int(total))
+                msg = f"pulling {name}: {status} {pct}%"
+            else:
+                msg = f"pulling {name}: {status}"
+            if on_status:
+                on_status(msg)
+
+
+def ensure_models(
+    on_status: Callable[[str], None] | None = None,
+    jobs: list[tuple[str, dict[str, str], str]] | None = None,
+) -> None:
+    for url, headers, name in jobs if jobs is not None else models_to_pull():
+        if on_status:
+            on_status(f"pulling {name}")
+        pull_model(name, base=url, headers=headers, on_status=on_status)
 
 
 def _post(

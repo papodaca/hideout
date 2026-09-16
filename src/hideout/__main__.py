@@ -53,6 +53,30 @@ def _need_sources() -> bool:
     return False
 
 
+def _ensure_ollama() -> int:
+    from hideout.ollama import OllamaError, ensure_models
+
+    printed = False
+
+    def status(msg: str) -> None:
+        nonlocal printed
+        printed = True
+        width = 80
+        shown = msg if len(msg) <= width else msg[: width - 1] + "…"
+        print(f"\r{shown:<{width}}", end="", file=sys.stderr, flush=True)
+
+    try:
+        ensure_models(on_status=status)
+    except OllamaError as exc:
+        if printed:
+            print(file=sys.stderr)
+        print(str(exc), file=sys.stderr)
+        return 2
+    if printed:
+        print(file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _bootstrap()
 
@@ -121,6 +145,10 @@ def main(argv: list[str] | None = None) -> int:
         from hideout.tui import run
 
         return run(k=getattr(args, "k", 6))
+
+    if args.cmd in {"index", "search", "ask"}:
+        if _ensure_ollama() != 0:
+            return 2
 
     if args.cmd == "index":
         if not _need_sources():

@@ -16,7 +16,7 @@ from rich.text import Text
 
 from hideout.config import get_config, reload_config, write_config
 from hideout.index import build_index, needs_rebuild
-from hideout.ollama import OllamaError, api_base
+from hideout.ollama import OllamaError, api_base, ensure_models, models_to_pull
 from hideout.paths import data_dir, history_path
 from hideout.search import Hit, rrf
 from hideout.sets import DocSet, list_sets, load_enabled, parse_set_args, pick_sets, save_enabled
@@ -303,6 +303,17 @@ def _prompt(
     )
 
 
+def _ensure_models(console: Console) -> None:
+    jobs = models_to_pull()
+    if not jobs:
+        return
+    with console.status("[dim]pulling models[/]", spinner="dots") as status:
+        def on_status(msg: str) -> None:
+            status.update(f"[dim]{escape(msg)}[/]")
+
+        ensure_models(on_status=on_status, jobs=jobs)
+
+
 def _ensure_index(console: Console) -> None:
     if not needs_rebuild():
         return
@@ -410,6 +421,11 @@ def _do_config(
     write_config(edited)
     reload_config()
     _print_config(console)
+    try:
+        _ensure_models(console)
+    except OllamaError as exc:
+        console.print(f"[red]{escape(str(exc))}[/]")
+        console.print()
     embed_changed = (
         api_base(edited.embed_url) != api_base(old.embed_url)
         or edited.embed_headers != old.embed_headers
@@ -419,6 +435,10 @@ def _do_config(
         try:
             console.print("[dim]rebuilding index…[/]")
             build_index(force=True)
+        except OllamaError as exc:
+            console.print(f"[red]{escape(str(exc))}[/]")
+            console.print()
+            return available, enabled
         except SystemExit as exc:
             msg = exc.args[0] if exc.args else "index failed"
             console.print(f"[red]{escape(str(msg))}[/]")
@@ -483,7 +503,15 @@ def _do_ask(
 def run(k: int = 6) -> int:
     console = Console()
     try:
+        _ensure_models(console)
+    except OllamaError as exc:
+        console.print(f"[red]{escape(str(exc))}[/]")
+        console.print()
+    try:
         _ensure_index(console)
+    except OllamaError as exc:
+        console.print(f"[red]{escape(str(exc))}[/]")
+        return 1
     except SystemExit as exc:
         msg = exc.args[0] if exc.args else "index failed"
         console.print(f"[red]{escape(str(msg))}[/]")
