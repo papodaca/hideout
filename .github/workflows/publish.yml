@@ -1,9 +1,8 @@
-# Publish live via GitHub OIDC. On npmjs.com the trusted publisher must
-# allow `npm publish` (stage-only is not enough). Delete and recreate
-# the publisher if the Edit form cannot add that permission.
+# Stage via GitHub OIDC. The trusted publisher is bound to the `npm`
+# GitHub environment. That is an OIDC claim, not a secret. No NPM_TOKEN.
 #
-# setup-node's registry-url writes an empty _authToken that makes npm
-# skip OIDC. Strip it before publish.
+# After the job is green, approve with 2FA:
+#   npm stage approve @papodaca/hideout@<version>
 #
 # Bump package.json, commit, tag vX.Y.Z, push the tag.
 
@@ -20,8 +19,9 @@ permissions:
 
 jobs:
   publish:
-    name: Publish to npm
+    name: Stage on npm
     runs-on: ubuntu-latest
+    environment: npm
     permissions:
       id-token: write
       contents: read
@@ -37,6 +37,9 @@ jobs:
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
+      - name: Use npm with staged publishing
+        run: npm install -g npm@11.15.0
+
       - name: Drop empty npm token so OIDC can run
         run: |
           npmrc="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
@@ -50,5 +53,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Publish
-        run: npm publish
+      - name: Stage
+        run: npm stage publish
