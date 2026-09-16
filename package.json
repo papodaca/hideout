@@ -1,6 +1,6 @@
 {
   "name": "@papodaca/hideout",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Ask a local model about markdown libraries",
   "type": "module",
   "bin": {
