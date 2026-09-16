@@ -2,8 +2,8 @@
 # uploads a draft and you approve it (2FA) on npmjs.com or:
 #   npm stage approve @papodaca/hideout@<version>
 #
-# To publish live from CI instead, edit the trusted publisher and also
-# allow npm publish, then change the last step to `npm publish`.
+# Do not set registry-url on setup-node. That writes an empty _authToken
+# and npm then skips OIDC (E401).
 #
 # Bump package.json, commit, tag vX.Y.Z, push the tag.
 
@@ -22,6 +22,9 @@ jobs:
   publish:
     name: Stage on npm
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout
@@ -31,7 +34,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
-          registry-url: https://registry.npmjs.org
           package-manager-cache: false
 
       - name: Use npm with staged publishing
@@ -44,4 +46,6 @@ jobs:
         run: npm run build
 
       - name: Stage
-        run: npm stage publish
+        run: |
+          unset NODE_AUTH_TOKEN
+          npm stage publish
