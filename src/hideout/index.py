@@ -17,6 +17,7 @@ from hideout.db import (
     reset_chunks,
     set_embedding_dim,
     set_meta,
+    try_bm25,
     try_hnsw,
 )
 from hideout.ollama import embed
@@ -86,6 +87,7 @@ def build_index(*, force: bool = False) -> int:
         set_meta("chunks", str(len(chunks)), conn)
         set_meta("vectors", "pgvector", conn)
     try_hnsw(conn)
+    try_bm25(conn)
     remove_legacy()
     return len(chunks)
 

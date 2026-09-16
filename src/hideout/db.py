@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import atexit
 import json
-import re
 import shutil
 import sqlite3
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +69,27 @@ MIGRATIONS: list[tuple[int, list[str]]] = [
             """,
         ],
     ),
+    (
+        2,
+        [
+            "CREATE EXTENSION IF NOT EXISTS pg_textsearch",
+            """
+            ALTER TABLE chunks ADD COLUMN IF NOT EXISTS search_text TEXT
+            GENERATED ALWAYS AS (
+                coalesce(book, '') || ' ' ||
+                coalesce(chapter, '') || ' ' ||
+                coalesce(file, '') || ' ' ||
+                coalesce(headings::text, '') || ' ' ||
+                coalesce(text, '')
+            ) STORED
+            """,
+            "DROP INDEX IF EXISTS chunks_bm25_idx",
+            """
+            CREATE INDEX chunks_bm25_idx ON chunks
+            USING bm25 (search_text) WITH (text_config='simple')
+            """,
+        ],
+    ),
 ]
 
 
@@ -97,31 +119,133 @@ def _require_node() -> None:
         )
 
 
-_js_patched = False
+PGLITE = "0.5.8"
+PGLITE_SOCKET = "0.2.11"
+PGLITE_PGVECTOR = "0.0.9"
+PGLITE_PG_TEXTSEARCH = "0.0.10"
+RUNTIME = "pglite-0.5-pg_textsearch"
 
 
-def _patch_manager_js() -> None:
-    global _js_patched
-    if _js_patched:
-        return
-    from py_pglite.manager import PGliteManager
+def _package_json() -> str:
+    return json.dumps(
+        {
+            "name": "hideout-pglite",
+            "private": True,
+            "dependencies": {
+                "@electric-sql/pglite": PGLITE,
+                "@electric-sql/pglite-socket": PGLITE_SOCKET,
+                "@electric-sql/pglite-pgvector": PGLITE_PGVECTOR,
+                "@electric-sql/pglite-pg_textsearch": PGLITE_PG_TEXTSEARCH,
+            },
+        },
+        indent=2,
+    ) + "\n"
 
-    orig = PGliteManager._generate_unix_js_content
 
-    def with_datadir(self, ext_requires_str: str, extensions_obj_str: str) -> str:
-        js = orig(self, ext_requires_str, extensions_obj_str)
-        patched, n = re.subn(
-            r"const db = new PGlite\(\{\s*extensions:",
-            "const db = new PGlite({\n  dataDir: './pgdata',\n  extensions:",
-            js,
-            count=1,
+def _manager_js(socket_path: Path) -> str:
+    sock = socket_path.as_posix()
+    return f"""\
+const {{ PGlite }} = require('@electric-sql/pglite');
+const {{ PGLiteSocketServer }} = require('@electric-sql/pglite-socket');
+const {{ vector }} = require('@electric-sql/pglite-pgvector');
+const {{ pg_textsearch }} = require('@electric-sql/pglite-pg_textsearch');
+const {{ unlink }} = require('fs/promises');
+const {{ existsSync }} = require('fs');
+
+const SOCKET_PATH = {sock!r};
+
+async function cleanup() {{
+  if (existsSync(SOCKET_PATH)) {{
+    try {{
+      await unlink(SOCKET_PATH);
+    }} catch (err) {{
+    }}
+  }}
+}}
+
+async function startServer() {{
+  try {{
+    const db = await PGlite.create({{
+      dataDir: './pgdata',
+      extensions: {{
+        vector,
+        pg_textsearch,
+      }},
+    }});
+    await cleanup();
+    const server = new PGLiteSocketServer({{
+      db,
+      path: SOCKET_PATH,
+    }});
+    await server.start();
+    console.log(`Server started on socket ${{SOCKET_PATH}}`);
+
+    const shutdown = async () => {{
+      try {{
+        await server.stop();
+        await db.close();
+      }} catch (err) {{
+        console.error('Error during shutdown:', err);
+      }}
+      process.exit(0);
+    }};
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  }} catch (err) {{
+    console.error('Failed to start PGlite server:', err);
+    process.exit(1);
+  }}
+}}
+
+startServer();
+"""
+
+
+def _prepare_runtime(work: Path, socket: Path) -> None:
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "pgdata").mkdir(parents=True, exist_ok=True)
+    pkg = _package_json()
+    pkg_path = work / "package.json"
+    js_path = work / "pglite_manager.js"
+    js = _manager_js(socket)
+    old_pkg = pkg_path.read_text(encoding="utf-8") if pkg_path.is_file() else ""
+    need_npm = old_pkg != pkg or not (work / "node_modules").is_dir()
+    if old_pkg != pkg:
+        pkg_path.write_text(pkg, encoding="utf-8")
+    if not js_path.is_file() or js_path.read_text(encoding="utf-8") != js:
+        js_path.write_text(js, encoding="utf-8")
+    if need_npm:
+        print("installing pglite extensions…", file=sys.stderr)
+        subprocess.run(
+            ["npm", "install"],
+            cwd=work,
+            check=True,
+            timeout=180,
         )
-        if n != 1:
-            raise RuntimeError("py-pglite JS template changed; cannot enable dataDir")
-        return patched
+    _rotate_old_pgdata(work)
 
-    PGliteManager._generate_unix_js_content = with_datadir  # type: ignore[method-assign]
-    _js_patched = True
+
+def _rotate_old_pgdata(work: Path) -> None:
+    marker = work / "runtime.txt"
+    current = marker.read_text(encoding="utf-8").strip() if marker.is_file() else ""
+    if current == RUNTIME:
+        return
+    pgdata = work / "pgdata"
+    if pgdata.is_dir() and any(pgdata.iterdir()):
+        bak = work / f"pgdata.bak-{current or 'legacy'}"
+        if bak.exists():
+            shutil.rmtree(bak)
+        pgdata.rename(bak)
+        pgdata.mkdir()
+        print(
+            f"pglite runtime changed; moved old data to {bak.name}. "
+            "the index will rebuild on next search.",
+            file=sys.stderr,
+        )
+
+
+def _mark_runtime(work: Path) -> None:
+    (work / "runtime.txt").write_text(RUNTIME + "\n", encoding="utf-8")
 
 
 def _alive() -> bool:
@@ -140,19 +264,11 @@ def ensure_db() -> None:
 
     from pgvector.psycopg import register_vector
     from psycopg.rows import dict_row
-    import psycopg
     from py_pglite import PGliteConfig, PGliteManager
 
-    _patch_manager_js()
-
     work = pglite_dir()
-    work.mkdir(parents=True, exist_ok=True)
-    (work / "pgdata").mkdir(parents=True, exist_ok=True)
-    js = work / "pglite_manager.js"
-    if js.is_file() and "dataDir" not in js.read_text(encoding="utf-8"):
-        js.unlink()
-
     socket = work / ".s.PGSQL.5432"
+    _prepare_runtime(work, socket)
     config = PGliteConfig(
         timeout=90,
         cleanup_on_exit=False,
@@ -166,17 +282,42 @@ def ensure_db() -> None:
     manager.start()
     _manager = manager
     try:
-        raw = psycopg.connect(config.get_dsn(), autocommit=True, row_factory=dict_row)
+        raw = _connect_psycopg(config.get_dsn(), dict_row)
         raw.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        raw.execute("CREATE EXTENSION IF NOT EXISTS pg_textsearch")
         register_vector(raw)
         _conn = _SharedConnection(raw)
         migrate(_conn)
+        _mark_runtime(pglite_dir())
     except Exception:
         stop_db()
         raise
     if not _atexit_registered:
         atexit.register(stop_db)
         _atexit_registered = True
+
+
+def _connect_psycopg(dsn: str, dict_row: Any) -> Any:
+    import psycopg
+
+    last: Exception | None = None
+    for attempt in range(8):
+        try:
+            return psycopg.connect(
+                dsn,
+                autocommit=True,
+                row_factory=dict_row,
+                connect_timeout=3,
+            )
+        except Exception as exc:
+            last = exc
+            if _manager is not None:
+                proc = getattr(_manager, "process", None)
+                if proc is not None and proc.poll() is not None:
+                    break
+            time.sleep(0.25)
+    assert last is not None
+    raise last
 
 
 def stop_db() -> None:
@@ -279,6 +420,16 @@ def try_hnsw(conn: Any) -> None:
         )
     except Exception:
         pass
+
+
+def try_bm25(conn: Any) -> None:
+    conn.execute("DROP INDEX IF EXISTS chunks_bm25_idx")
+    conn.execute(
+        """
+        CREATE INDEX chunks_bm25_idx ON chunks
+        USING bm25 (search_text) WITH (text_config='simple')
+        """
+    )
 
 
 def _load_zvec(path: Path) -> dict[int, list[float]]:
@@ -399,4 +550,5 @@ def _import_legacy(conn: Any) -> None:
         set_meta("chunks", str(len(rows)), conn)
         set_meta("vectors", "pgvector", conn)
     try_hnsw(conn)
+    try_bm25(conn)
     remove_legacy()

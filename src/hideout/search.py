@@ -13,17 +13,6 @@ from hideout.vectors import vector_query
 RRF_K = 60
 FTS_WEIGHT = 1.2
 VEC_WEIGHT = 1.0
-# simple tsvector has no stopwords. Question words would match every chunk.
-STOP = {
-    "a", "an", "the", "and", "or", "but", "if", "of", "in", "on", "at", "to",
-    "for", "with", "from", "by", "as", "is", "are", "was", "were", "be", "been",
-    "being", "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "can", "who", "what", "where", "when", "why", "how",
-    "which", "whom", "this", "that", "these", "those", "it", "its", "he", "she",
-    "they", "them", "his", "her", "their", "we", "you", "i", "me", "my", "our",
-    "your", "not", "no", "into", "about", "over", "after", "before", "than",
-    "then", "so", "just", "also", "only", "there",
-}
 
 
 @dataclass
@@ -34,18 +23,12 @@ class Hit:
     vec_rank: int | None
 
 
-def _tsquery(text: str) -> str | None:
+def _bm25_query(text: str) -> str | None:
     tokens = re.findall(r"[A-Za-zÅÄÖåäö0-9']+", text)
-    terms: list[str] = []
-    for tok in tokens:
-        if len(tok) < 2 or tok.lower() in STOP:
-            continue
-        safe = re.sub(r"[^A-Za-zÅÄÖåäö0-9']", "", tok)
-        if safe:
-            terms.append(f"{safe}:*")
-    if not terms:
+    kept = [tok for tok in tokens if len(tok) >= 2]
+    if not kept:
         return None
-    return " | ".join(terms)
+    return " ".join(kept)
 
 
 def rowids_in_books(books: Collection[str]) -> set[int]:
@@ -64,33 +47,33 @@ def fts_search(
     limit: int = 20,
     rowids: set[int] | None = None,
 ) -> list[tuple[int, float]]:
-    match = _tsquery(query)
+    match = _bm25_query(query)
     if not match:
         return []
     if rowids is not None and not rowids:
         return []
     conn = connect()
+    q = match
     if rowids is None:
         rows = conn.execute(
             """
-            SELECT c.id, ts_rank_cd(c.tsv, q) AS rank
-            FROM chunks c, to_tsquery('simple', %s) q
-            WHERE c.tsv @@ q
-            ORDER BY rank DESC
+            SELECT c.id, c.search_text <@> to_bm25query(%s, 'chunks_bm25_idx') AS rank
+            FROM chunks c
+            ORDER BY c.search_text <@> to_bm25query(%s, 'chunks_bm25_idx')
             LIMIT %s
             """,
-            (match, limit),
+            (q, q, limit),
         ).fetchall()
     else:
         rows = conn.execute(
             """
-            SELECT c.id, ts_rank_cd(c.tsv, q) AS rank
-            FROM chunks c, to_tsquery('simple', %s) q
-            WHERE c.tsv @@ q AND c.id = ANY(%s)
-            ORDER BY rank DESC
+            SELECT c.id, c.search_text <@> to_bm25query(%s, 'chunks_bm25_idx') AS rank
+            FROM chunks c
+            WHERE c.id = ANY(%s)
+            ORDER BY c.search_text <@> to_bm25query(%s, 'chunks_bm25_idx')
             LIMIT %s
             """,
-            (match, list(rowids), limit),
+            (q, list(rowids), q, limit),
         ).fetchall()
     return [(int(r["id"]), float(r["rank"])) for r in rows]
 
