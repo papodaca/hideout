@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from hideout.chunk import source_roots
-from hideout.index import connect
+from hideout.db import connect
 from hideout.paths import data_dir, sets_path
 
 
@@ -45,13 +45,9 @@ def _title_for(slug: str) -> str:
 
 
 def list_sets() -> list[DocSet]:
-    conn = connect()
-    try:
-        rows = conn.execute(
-            "SELECT book, COUNT(*) AS n FROM chunks GROUP BY book ORDER BY book"
-        ).fetchall()
-    finally:
-        conn.close()
+    rows = connect().execute(
+        "SELECT book, COUNT(*) AS n FROM chunks GROUP BY book ORDER BY book"
+    ).fetchall()
     return [DocSet(slug=r["book"], title=_title_for(r["book"]), n=int(r["n"])) for r in rows]
 
 

@@ -20,12 +20,13 @@ def _bootstrap() -> None:
 
 def _print_paths() -> int:
     from hideout.config import get_config
-    from hideout.paths import config_path, data_dir, index_dir
+    from hideout.paths import config_path, data_dir, index_dir, pglite_dir
 
     cfg = get_config()
     print(f"config  {config_path()}")
     print(f"data    {data_dir()}")
     print(f"index   {index_dir()}")
+    print(f"pglite  {pglite_dir()}")
     print(f"llm     {cfg.chat_url}")
     print(f"embed   {cfg.embed_url}")
     if cfg.chat_headers:
@@ -123,6 +124,15 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    try:
+        return _dispatch(parser, args)
+    finally:
+        from hideout.db import stop_db
+
+        stop_db()
+
+
+def _dispatch(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     if args.cmd == "config":
         return _print_paths()
 

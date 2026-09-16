@@ -15,6 +15,7 @@ from rich.markup import escape
 from rich.text import Text
 
 from hideout.config import get_config, reload_config, write_config
+from hideout.db import stop_db
 from hideout.index import build_index, needs_rebuild
 from hideout.ollama import OllamaError, api_base, ensure_models, models_to_pull
 from hideout.paths import data_dir, history_path
@@ -502,6 +503,13 @@ def _do_ask(
 
 def run(k: int = 6) -> int:
     console = Console()
+    try:
+        return _run(console, k)
+    finally:
+        stop_db()
+
+
+def _run(console: Console, k: int) -> int:
     try:
         _ensure_models(console)
     except OllamaError as exc:

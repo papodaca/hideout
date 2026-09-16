@@ -1,10 +1,10 @@
 # Hideout
 
-A terminal for asking questions against markdown libraries. Hybrid search (SQLite FTS + a local zvec index) via a local model.
+A terminal for asking questions against markdown libraries. Hybrid search (Postgres full-text + pgvector) in one local PGlite database, via a local model.
 
 ## Install
 
-Python 3.11 or newer has to be on PATH. Ask and search need an OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` server. Ollama exposes those at `http://127.0.0.1:11434/v1`.
+Python 3.11+ has to be on PATH. Node.js (`node` and `npm`) is a runtime dependency. Hideout starts PGlite through Node, and first launch runs `npm install` under `$XDG_DATA_HOME/hideout/pglite`. Ask and search need an OpenAI-compatible `/v1/chat/completions` and `/v1/embeddings` server. Ollama exposes those at `http://127.0.0.1:11434/v1`.
 
 ```
 curl -L https://github.com/papodaca/hideout/raw/refs/heads/main/install.sh | bash
@@ -31,7 +31,7 @@ The venv lives at `~/.venv/hideout` if you want to activate it yourself. `HIDEOU
 
 Config: `$XDG_CONFIG_HOME/hideout/config.toml` (default `~/.config/hideout/config.toml`)
 
-Index, set toggles, and prompt history: `$XDG_DATA_HOME/hideout/` (default `~/.local/share/hideout/`)
+Index (PGlite + pgvector), set toggles, and prompt history: `$XDG_DATA_HOME/hideout/` (default `~/.local/share/hideout/`). First launch applies schema migrations. An existing `chunks.sqlite` + `zvec` index is copied in once, then removed.
 
 First run writes a config if none exists. If `./markdown` or `./docs` is present, those get added as sources. Otherwise point `sources` at one or more markdown directories. Subfolders become document sets you can toggle with `/sets`.
 

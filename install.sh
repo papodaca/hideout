@@ -113,6 +113,10 @@ persist_path() {
   esac
 }
 
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  echo "need    Node.js (node + npm) for the local Postgres index" >&2
+fi
+
 PY="$(find_python)"
 PY_VER="$("$PY" -c "import sys; print('.'.join(map(str, sys.version_info[:3])))")"
 echo "python  $PY ($PY_VER)"

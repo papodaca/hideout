@@ -30,6 +30,10 @@ def index_dir() -> Path:
     return data_dir() / "index"
 
 
+def pglite_dir() -> Path:
+    return data_dir() / "pglite"
+
+
 def history_path() -> Path:
     return data_dir() / "history"
 

@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 from collections.abc import Collection
 from dataclasses import dataclass
 
 from hideout.chunk import Chunk
-from hideout.index import connect, row_to_chunk
+from hideout.db import connect
+from hideout.index import row_to_chunk
 from hideout.ollama import embed
 from hideout.vectors import vector_query
 
 RRF_K = 60
 FTS_WEIGHT = 1.2
 VEC_WEIGHT = 1.0
+# simple tsvector has no stopwords. Question words would match every chunk.
+STOP = {
+    "a", "an", "the", "and", "or", "but", "if", "of", "in", "on", "at", "to",
+    "for", "with", "from", "by", "as", "is", "are", "was", "were", "be", "been",
+    "being", "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "can", "who", "what", "where", "when", "why", "how",
+    "which", "whom", "this", "that", "these", "those", "it", "its", "he", "she",
+    "they", "them", "his", "her", "their", "we", "you", "i", "me", "my", "our",
+    "your", "not", "no", "into", "about", "over", "after", "before", "than",
+    "then", "so", "just", "also", "only", "there",
+}
 
 
 @dataclass
@@ -23,32 +34,29 @@ class Hit:
     vec_rank: int | None
 
 
-def _fts_query(text: str) -> str | None:
+def _tsquery(text: str) -> str | None:
     tokens = re.findall(r"[A-Za-zÅÄÖåäö0-9']+", text)
     terms: list[str] = []
     for tok in tokens:
-        if len(tok) < 2:
+        if len(tok) < 2 or tok.lower() in STOP:
             continue
-        safe = tok.replace('"', "")
-        terms.append(f"{safe}*")
+        safe = re.sub(r"[^A-Za-zÅÄÖåäö0-9']", "", tok)
+        if safe:
+            terms.append(f"{safe}:*")
     if not terms:
         return None
-    return " OR ".join(terms)
+    return " | ".join(terms)
 
 
 def rowids_in_books(books: Collection[str]) -> set[int]:
     if not books:
         return set()
-    placeholders = ",".join("?" * len(books))
     conn = connect()
-    try:
-        rows = conn.execute(
-            f"SELECT rowid FROM chunks WHERE book IN ({placeholders})",
-            tuple(books),
-        ).fetchall()
-    finally:
-        conn.close()
-    return {int(r["rowid"]) for r in rows}
+    rows = conn.execute(
+        "SELECT id FROM chunks WHERE book = ANY(%s)",
+        (list(books),),
+    ).fetchall()
+    return {int(r["id"]) for r in rows}
 
 
 def fts_search(
@@ -56,43 +64,35 @@ def fts_search(
     limit: int = 20,
     rowids: set[int] | None = None,
 ) -> list[tuple[int, float]]:
-    match = _fts_query(query)
+    match = _tsquery(query)
     if not match:
         return []
     if rowids is not None and not rowids:
         return []
     conn = connect()
-    try:
-        try:
-            if rowids is None:
-                rows = conn.execute(
-                    """
-                    SELECT rowid, bm25(chunks_fts) AS rank
-                    FROM chunks_fts
-                    WHERE chunks_fts MATCH ?
-                    ORDER BY rank
-                    LIMIT ?
-                    """,
-                    (match, limit),
-                ).fetchall()
-            else:
-                placeholders = ",".join("?" * len(rowids))
-                rows = conn.execute(
-                    f"""
-                    SELECT rowid, bm25(chunks_fts) AS rank
-                    FROM chunks_fts
-                    WHERE chunks_fts MATCH ?
-                      AND rowid IN ({placeholders})
-                    ORDER BY rank
-                    LIMIT ?
-                    """,
-                    (match, *rowids, limit),
-                ).fetchall()
-        except sqlite3.OperationalError:
-            return []
-    finally:
-        conn.close()
-    return [(int(r["rowid"]), float(r["rank"])) for r in rows]
+    if rowids is None:
+        rows = conn.execute(
+            """
+            SELECT c.id, ts_rank_cd(c.tsv, q) AS rank
+            FROM chunks c, to_tsquery('simple', %s) q
+            WHERE c.tsv @@ q
+            ORDER BY rank DESC
+            LIMIT %s
+            """,
+            (match, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT c.id, ts_rank_cd(c.tsv, q) AS rank
+            FROM chunks c, to_tsquery('simple', %s) q
+            WHERE c.tsv @@ q AND c.id = ANY(%s)
+            ORDER BY rank DESC
+            LIMIT %s
+            """,
+            (match, list(rowids), limit),
+        ).fetchall()
+    return [(int(r["id"]), float(r["rank"])) for r in rows]
 
 
 def vector_search(
@@ -135,23 +135,20 @@ def rrf(
     if not ordered:
         return []
     conn = connect()
-    try:
-        hits: list[Hit] = []
-        for rowid, score in ordered:
-            row = conn.execute("SELECT * FROM chunks WHERE rowid = ?", (rowid,)).fetchone()
-            if row is None:
-                continue
-            hits.append(
-                Hit(
-                    chunk=row_to_chunk(row),
-                    score=score,
-                    fts_rank=fts_rank.get(rowid),
-                    vec_rank=vec_rank.get(rowid),
-                )
+    hits: list[Hit] = []
+    for rowid, score in ordered:
+        row = conn.execute("SELECT * FROM chunks WHERE id = %s", (rowid,)).fetchone()
+        if row is None:
+            continue
+        hits.append(
+            Hit(
+                chunk=row_to_chunk(row),
+                score=score,
+                fts_rank=fts_rank.get(rowid),
+                vec_rank=vec_rank.get(rowid),
             )
-        return hits
-    finally:
-        conn.close()
+        )
+    return hits
 
 
 def format_hit(hit: Hit, *, snippet: int = 700) -> str:
