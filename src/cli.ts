@@ -228,8 +228,9 @@ async function dispatch(
       for (const hit of hits) {
         const c = hit.chunk;
         const section = [c.chapter, ...c.headings].join(" > ");
-        const page = c.page ? `p.${c.page}` : "p.?";
-        console.log(`  - ${c.book} · ${c.file} · ${section} · PDF ${page}`);
+        const bits = [c.book, c.file, section];
+        if (c.page) bits.push(`PDF p.${c.page}`);
+        console.log(`  - ${bits.join(" · ")}`);
       }
     }
     return 0;

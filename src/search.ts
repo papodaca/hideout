@@ -137,8 +137,13 @@ export async function rrf(
 export function formatHit(hit: Hit, snippet = 700): string {
   const c = hit.chunk;
   const section = [c.chapter, ...c.headings].join(" > ");
-  let page = c.page ? `PDF p.${c.page}` : "PDF p.?";
-  if (c.printed != null) page += ` / printed ${c.printed}`;
+  const meta = [c.file];
+  if (c.page) {
+    let page = `PDF p.${c.page}`;
+    if (c.printed != null) page += ` / printed ${c.printed}`;
+    meta.push(page);
+  }
+  meta.push(`score ${hit.score.toFixed(3)}`);
   const body = c.text.length <= snippet ? c.text : c.text.slice(0, snippet - 1).replace(/\s+$/, "") + "…";
-  return `${c.book} · ${section}\n${c.file} · ${page} · score ${hit.score.toFixed(3)}\n\n${body}`;
+  return `${c.book} · ${section}\n${meta.join(" · ")}\n\n${body}`;
 }

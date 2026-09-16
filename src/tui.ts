@@ -401,13 +401,18 @@ function printHits(hits: Hit[]): void {
   hits.forEach((hit, i) => {
     const c = hit.chunk;
     const section = [c.chapter, ...c.headings].join(" > ");
-    let page = c.page ? `PDF p.${c.page}` : "PDF p.?";
-    if (c.printed != null) page += ` / printed ${c.printed}`;
+    const meta = [c.file];
+    if (c.page) {
+      let page = `PDF p.${c.page}`;
+      if (c.printed != null) page += ` / printed ${c.printed}`;
+      meta.push(page);
+    }
+    meta.push(hit.score.toFixed(3));
     console.log();
     console.log(
       `  ${accent(String(i + 1))}  ${pc.cyan(c.book)}  ${pc.dim("·")}  ${section}`,
     );
-    console.log(pc.dim(`     ${c.file} · ${page} · ${hit.score.toFixed(3)}`));
+    console.log(pc.dim(`     ${meta.join(" · ")}`));
     console.log();
     console.log(wrapText(c.text, wrapWidth(), "     "));
   });
@@ -421,9 +426,10 @@ function printSources(hits: Hit[]): void {
   hits.forEach((hit, i) => {
     const c = hit.chunk;
     const section = [c.chapter, ...c.headings].join(" > ");
-    const page = c.page ? `p.${c.page}` : "p.?";
+    const bits = [c.file, section];
+    if (c.page) bits.push(`PDF p.${c.page}`);
     console.log(
-      `  ${pc.dim(`${i + 1}.`)} ${pc.cyan(c.book)} ${pc.dim(`· ${c.file} · ${section} · PDF ${page}`)}`,
+      `  ${pc.dim(`${i + 1}.`)} ${pc.cyan(c.book)} ${pc.dim(`· ${bits.join(" · ")}`)}`,
     );
   });
   console.log();

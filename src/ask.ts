@@ -10,9 +10,13 @@ export function promptMessages(
   hits.forEach((hit, i) => {
     const c = hit.chunk;
     const section = [c.chapter, ...c.headings].join(" > ");
-    let page = c.page ? `PDF page ${c.page}` : "unknown page";
-    if (c.printed != null) page += `, printed ${c.printed}`;
-    blocks.push(`[${i + 1}] ${c.book} | ${c.file} | ${section} | ${page}\n${c.text}`);
+    const parts = [c.book, c.file, section];
+    if (c.page) {
+      let page = `PDF page ${c.page}`;
+      if (c.printed != null) page += `, printed ${c.printed}`;
+      parts.push(page);
+    }
+    blocks.push(`[${i + 1}] ${parts.join(" | ")}\n${c.text}`);
   });
   const context = blocks.join("\n\n----\n\n");
   return [
